@@ -1,0 +1,34 @@
+# Secrets — NE JAMAIS commit
+local.settings.json
+.env
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtualenvs
+.venv/
+venv/
+env/
+ENV/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Build / cache
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/

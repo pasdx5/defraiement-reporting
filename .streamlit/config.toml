@@ -1,0 +1,31 @@
+# Config Streamlit — Azure App Service compatible
+# La plupart des flags sont pertinents en prod (derrière le proxy Azure/Easy Auth).
+# En dev local (localhost:8501) Streamlit lit la config par défaut, ce fichier
+# est simplement ignoré si pas conflictuel.
+
+[server]
+# Azure App Service impose le port 8000 (WEBSITES_PORT env var).
+# Le startup command l'override également ; ce défaut est pour cohérence.
+port = 8000
+address = "0.0.0.0"
+
+# Derrière Easy Auth qui ajoute son propre header CORS/XSRF, on désactive
+# les protections built-in Streamlit qui feraient double emploi/conflit.
+enableCORS = false
+enableXsrfProtection = false
+
+# WebSocket ping — évite les disconnections idle en prod.
+enableWebsocketCompression = true
+
+[browser]
+# Utile pour lien "Open in browser" côté logs Streamlit.
+gatherUsageStats = false
+
+[theme]
+# Charte couleur RACS — rouge principal + fond crème.
+# Alignée sur l'app defraiement.acsrs.be pour cohérence visuelle.
+primaryColor = "#B0210F"
+backgroundColor = "#FEFDFB"
+secondaryBackgroundColor = "#F5F3EF"
+textColor = "#1F2937"
+font = "sans serif"
