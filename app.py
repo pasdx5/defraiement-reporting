@@ -5,7 +5,7 @@ Lance avec :
 
 Ouvre automatiquement http://localhost:8501
 
-Filtre par défaut : statut "Payées" uniquement (= Signée Virement).
+Filtre par défaut : statut "Payées" = SigneeVirement + Payee (2 statuts finaux).
 Granularité temporelle : semaine / mois / année civile.
 """
 from __future__ import annotations
@@ -75,7 +75,8 @@ with st.sidebar:
         ],
         index=0,
         help=(
-            "Payées = Signée Virement (l'argent a quitté le compte). "
+            "Payées = virement signé par la Trésorière OU paiement confirmé "
+            "par extrait bancaire (statuts SigneeVirement + Payee). "
             "En cours = toute demande encore dans le workflow. "
             "Toutes = la somme des deux."
         ),
@@ -84,7 +85,7 @@ with st.sidebar:
     # Mapping vers les statuts SP correspondants
     if statut_choice.startswith("💰"):
         statuts_actifs = STATUTS_PAYE
-        statut_label   = "payées (Signée Virement)"
+        statut_label   = "payées"
         date_label     = "date de paiement"
     elif statut_choice.startswith("⏳"):
         statuts_actifs = STATUTS_EN_COURS

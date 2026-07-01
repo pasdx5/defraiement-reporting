@@ -98,14 +98,21 @@ def _get_token() -> str:
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
-# Statuts du workflow RACS :
-#   Soumise → ApprouveeChef → VerifieeAdmin → EncodeeBanque → SigneeVirement (= Payée)
-STATUTS_PAYE     = ("SigneeVirement",)
+# Statuts du workflow RACS (mis à jour #20 — juillet 2026) :
+#   Soumise → ApprouveeChef → VerifieeAdmin → EncodeeBanque → SigneeVirement → Payee
+#
+# - "SigneeVirement" : virement signé par la Trésorière (l'argent va partir)
+# - "Payee"          : paiement confirmé par extrait bancaire (état final)
+#
+# Pour le reporting "demandes payées", on inclut LES DEUX statuts :
+#   - Les demandes récentes en Payee (workflow bouclé post-#20)
+#   - Les demandes historiques en SigneeVirement (avant l'étape confirmer_paiement)
+STATUTS_PAYE     = ("SigneeVirement", "Payee")
 STATUTS_EN_COURS = ("Soumise", "ApprouveeChef", "VerifieeAdmin", "EncodeeBanque")
 STATUTS_TOUS     = STATUTS_PAYE + STATUTS_EN_COURS
 
-# Rétro-compat
-STATUT_PAYE = STATUTS_PAYE[0]
+# Rétro-compat — pointe désormais sur le statut final "Payee"
+STATUT_PAYE = "Payee"
 
 
 def _fetch_list(site_id: str, list_name: str, select: str) -> list[dict]:
