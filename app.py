@@ -32,6 +32,14 @@ from data import (
 # Config page
 # ══════════════════════════════════════════════════════════════════════
 
+# Libellés d'affichage des types de demande (mêmes emojis que le frontend)
+TYPE_LABELS = {
+    "NoteFrais":  "💰 Note de frais",
+    "Prestation": "🚑 Prestation",
+    "Cours":      "🎓 Cours",
+    "Preventif":  "🎪 Préventif",
+}
+
 st.set_page_config(
     page_title="RACS Défraiement — Reporting",
     page_icon="📊",
@@ -100,7 +108,7 @@ with st.sidebar:
 
     granularite = st.radio(
         "Granularité temporelle",
-        options=["Mois", "Semaine", "Année", "Période personnalisée"],
+        options=["Mois", "Semaine", "Année", "Toutes", "Période personnalisée"],
         index=0,
     )
 
@@ -130,12 +138,19 @@ with st.sidebar:
         annee = st.selectbox("Année", list(range(today.year, today.year - 5, -1)), index=0)
         d_start = date(annee, 1, 1)
         d_end   = date(annee, 12, 31)
+    elif granularite == "Toutes":
+        # Toutes les données, sans borne temporelle
+        d_start = date(2000, 1, 1)
+        d_end   = today
     else:
         d_start = st.date_input("Du", value=date(today.year, 1, 1))
         d_end   = st.date_input("Au", value=today)
 
     st.divider()
-    st.markdown(f"**📅 Période sélectionnée :**\n\n{d_start.strftime('%d %b %Y')} → {d_end.strftime('%d %b %Y')}")
+    if granularite == "Toutes":
+        st.markdown("**📅 Période sélectionnée :**\n\nToutes les données")
+    else:
+        st.markdown(f"**📅 Période sélectionnée :**\n\n{d_start.strftime('%d %b %Y')} → {d_end.strftime('%d %b %Y')}")
     st.divider()
 
     if st.button("🔄 Rafraîchir les données", width="stretch"):
@@ -251,9 +266,26 @@ with tab_overview:
 # ──────────────────────────────────────────────────────────────────────
 
 with tab_membre:
-    st.subheader("Statistiques par membre")
+    col_titre, col_types = st.columns([2, 3])
+    with col_titre:
+        st.subheader("Statistiques par membre")
+    with col_types:
+        types_dispo = sorted(demandes["type"].dropna().unique())
+        types_sel = st.multiselect(
+            "Filtrer par type de demande",
+            options=types_dispo,
+            default=types_dispo,
+            format_func=lambda t: TYPE_LABELS.get(t, t),
+        )
 
-    par_membre = demandes.groupby(["demandeur_email", "demandeur_label"]).agg(
+    demandes_m = demandes[demandes["type"].isin(types_sel)] if types_sel else demandes
+
+    if demandes_m.empty:
+        # Pas de st.stop() ici : ça tuerait le rendu des onglets suivants.
+        # Le code aval tolère les DataFrames vides (métriques à 0/—).
+        st.warning("Aucune demande pour ce(s) type(s) sur la période.")
+
+    par_membre = demandes_m.groupby(["demandeur_email", "demandeur_label"]).agg(
         total=("montant_total", "sum"),
         nb=("id", "count"),
     ).reset_index().sort_values("total", ascending=False)
@@ -287,10 +319,50 @@ with tab_membre:
         m = df_show["Bénévole"].str.contains(search, case=False, na=False) | \
             df_show["Email"].str.contains(search, case=False, na=False)
         df_show = df_show[m]
-    st.dataframe(df_show, hide_index=True, width="stretch",
+    st.caption("💡 Clique sur une ligne pour afficher l'historique complet du bénévole.")
+    event = st.dataframe(df_show, hide_index=True, width="stretch",
                  column_config={
                      "Total reçu (€)": st.column_config.NumberColumn(format="%.2f €"),
-                 })
+                 },
+                 on_select="rerun", selection_mode="single-row",
+                 key="table_par_membre")
+
+    # ── Drill-down : historique complet du bénévole sélectionné ────────
+    sel_rows = event.selection.rows if event and event.selection else []
+    if sel_rows:
+        sel = df_show.iloc[sel_rows[0]]
+        sel_email = sel["Email"]
+        sel_label = sel["Bénévole"]
+
+        # Historique COMPLET : tous statuts, toutes périodes (indépendant
+        # des filtres statut/période/type de la sidebar)
+        histo = demandes_all_raw[
+            demandes_all_raw["demandeur_email"] == sel_email
+        ].sort_values("date_ref", ascending=False)
+
+        st.markdown("---")
+        st.markdown(f"### 🗂️ Historique complet — {sel_label}")
+        st.caption("Toutes les demandes du bénévole, tous statuts et toutes périodes confondus.")
+
+        h_paye = histo[histo["statut"].isin(STATUTS_PAYE)]
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Demandes (total)", len(histo))
+        c2.metric("Payées", len(h_paye))
+        c3.metric("Total payé", f"{h_paye['montant_total'].sum():,.2f} €".replace(",", " "))
+        c4.metric("Première demande",
+                  histo["date_ref"].min().strftime("%d/%m/%Y") if len(histo) else "—")
+
+        histo_display = histo[[
+            "numero_ref", "type", "statut",
+            "date_soumission", "date_paiement", "montant_total",
+        ]].copy()
+        histo_display["type"] = histo_display["type"].map(lambda t: TYPE_LABELS.get(t, t))
+        histo_display.columns = ["N° Réf", "Type", "Statut",
+                                 "Soumise le", "Payée le", "Montant (€)"]
+        st.dataframe(histo_display, hide_index=True, width="stretch",
+                     column_config={
+                         "Montant (€)": st.column_config.NumberColumn(format="%.2f €"),
+                     })
 
 
 # ──────────────────────────────────────────────────────────────────────
