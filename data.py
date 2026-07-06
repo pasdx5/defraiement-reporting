@@ -37,11 +37,19 @@ def _load_credentials() -> dict:
     env_secret = os.environ.get("GRAPH_CLIENT_SECRET", "").strip()
     env_tenant = os.environ.get("GRAPH_TENANT_ID", "").strip()
     if env_id and env_secret and env_tenant:
-        return {
+        creds = {
             "GRAPH_CLIENT_ID":     env_id,
             "GRAPH_CLIENT_SECRET": env_secret,
             "GRAPH_TENANT_ID":     env_tenant,
         }
+        # Clés optionnelles (site RH pour la liste Membres, overrides…) —
+        # sans elles, l'onglet Vérif planning ne peut pas charger les membres.
+        for opt in ("SHAREPOINT_HR_SITE_ID", "SHAREPOINT_MEMBRES_LIST",
+                    "SHAREPOINT_FINANCES_SITE_ID"):
+            v = os.environ.get(opt, "").strip()
+            if v:
+                creds[opt] = v
+        return creds
 
     # (2) Dev local — local.settings.json de defraiement-functions
     candidates = [
