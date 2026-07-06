@@ -374,38 +374,69 @@ with tab_membre:
 with tab_type:
     st.subheader("Statistiques par type de prestation")
 
-    par_type = demandes.groupby("type").agg(
-        total=("montant_total", "sum"),
-        nb=("id", "count"),
-        nb_benevoles=("demandeur_email", "nunique"),
-    ).reset_index().sort_values("total", ascending=False)
-    par_type = par_type.rename(columns={
-        "type":         "Type",
-        "total":        "Total (€)",
-        "nb":           "Nb demandes",
-        "nb_benevoles": "Nb bénévoles uniques",
-    })
-
-    st.dataframe(par_type, hide_index=True, width="stretch",
-                 column_config={
-                     "Total (€)": st.column_config.NumberColumn(format="%.2f €"),
-                 })
-
-    st.markdown("### Détail par service (AMU / ATNUP / Cours / Préventif…)")
+    # Lignes (jointes aux demandes filtrées statut+période) — servent à la
+    # fois à la ventilation AMU/ATNUP et au détail par service plus bas.
     try:
-        # On ne passe QUE les demandes filtrées (statut + période) → les lignes
-        # héritent automatiquement du même filtre.
         lignes = lignes_des_demandes(demandes_all)
     except Exception as e:
         st.warning(f"Lignes indisponibles : {e}")
         lignes = pd.DataFrame()
 
+    lignes_period = pd.DataFrame()
     if not lignes.empty:
         mask_l = (
             (lignes["date_ref"] >= pd.Timestamp(d_start)) &
             (lignes["date_ref"] <= pd.Timestamp(d_end) + pd.Timedelta(days=1))
         )
         lignes_period = lignes.loc[mask_l]
+
+    # ── Tableau par type, avec les Prestations ventilées AMU / ATNUP ──
+    par_type = demandes.groupby("type").agg(
+        total=("montant_total", "sum"),
+        nb=("id", "count"),
+        nb_benevoles=("demandeur_email", "nunique"),
+    ).reset_index()
+
+    lp = lignes_period[lignes_period["type_demande"] == "Prestation"] \
+        if (not lignes_period.empty and "type_demande" in lignes_period.columns) \
+        else pd.DataFrame()
+
+    rows_type = []
+    for _, r in par_type.iterrows():
+        if r["type"] == "Prestation" and not lp.empty:
+            # Ventilation par service depuis les lignes. NB : les montants
+            # viennent des lignes (Montant_Propose) et une demande mixte
+            # AMU+ATNUP compte dans chaque service.
+            for svc, grp in lp.groupby("type_service"):
+                rows_type.append({
+                    "Type":                 f"Prestation — {svc or '(sans service)'}",
+                    "Total (€)":            grp["montant"].sum(),
+                    "Nb demandes":          grp["id_demande"].nunique(),
+                    "Nb bénévoles uniques": grp["demandeur_email"].nunique(),
+                })
+        else:
+            rows_type.append({
+                "Type":                 r["type"],
+                "Total (€)":            r["total"],
+                "Nb demandes":          r["nb"],
+                "Nb bénévoles uniques": r["nb_benevoles"],
+            })
+    par_type_display = pd.DataFrame(rows_type).sort_values("Total (€)", ascending=False)
+
+    st.dataframe(par_type_display, hide_index=True, width="stretch",
+                 column_config={
+                     "Total (€)": st.column_config.NumberColumn(format="%.2f €"),
+                 })
+    if not lp.empty:
+        st.caption(
+            "ℹ️ Prestations ventilées AMU/ATNUP d'après les lignes de prestation "
+            "(montants proposés par ligne). Une demande mixte AMU+ATNUP est "
+            "comptée dans chaque service — la somme des 'Nb demandes' peut donc "
+            "dépasser le nombre réel de demandes."
+        )
+
+    st.markdown("### Détail par service (AMU / ATNUP / Cours / Préventif…)")
+    if not lignes.empty:
         if not lignes_period.empty:
             par_service = lignes_period.groupby(["type_service", "periode"]).agg(
                 total=("montant", "sum"),

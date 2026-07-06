@@ -284,8 +284,9 @@ def lignes_des_demandes(demandes_df: pd.DataFrame | None = None) -> pd.DataFrame
     # collision avec la colonne id_demande existante des lignes (interdit par
     # les pandas récents).
     dem = demandes_df[[
-        "id", "date_ref", "date_paiement", "demandeur_label", "demandeur_email", "statut",
-    ]].rename(columns={"id": "demande_sp_id"})
+        "id", "date_ref", "date_paiement", "demandeur_label", "demandeur_email",
+        "statut", "type",
+    ]].rename(columns={"id": "demande_sp_id", "type": "type_demande"})
     df = lignes.merge(
         dem, left_on="id_demande", right_on="demande_sp_id", how="inner",
     ).drop(columns=["demande_sp_id"])
