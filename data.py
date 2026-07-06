@@ -271,12 +271,16 @@ def lignes_des_demandes(demandes_df: pd.DataFrame | None = None) -> pd.DataFrame
     lignes = load_lignes()
     if demandes_df.empty or lignes.empty:
         return pd.DataFrame()
+    # NB : on renomme "id" côté demandes AVANT le merge. L'ancien code utilisait
+    # suffixes=("", "_demande") → le "id" de droite devenait "id_demande", en
+    # collision avec la colonne id_demande existante des lignes (interdit par
+    # les pandas récents).
+    dem = demandes_df[[
+        "id", "date_ref", "date_paiement", "demandeur_label", "demandeur_email", "statut",
+    ]].rename(columns={"id": "demande_sp_id"})
     df = lignes.merge(
-        demandes_df[["id", "date_ref", "date_paiement", "demandeur_label", "demandeur_email", "statut"]],
-        left_on="id_demande", right_on="id",
-        suffixes=("", "_demande"),
-        how="inner",
-    )
+        dem, left_on="id_demande", right_on="demande_sp_id", how="inner",
+    ).drop(columns=["demande_sp_id"])
     # Sécurise le type datetime avant les opérations .dt
     df["date_ref"] = pd.to_datetime(df["date_ref"], errors="coerce")
     df["year"]  = df["date_ref"].dt.year
@@ -288,6 +292,58 @@ def lignes_des_demandes(demandes_df: pd.DataFrame | None = None) -> pd.DataFrame
 # Rétro-compat
 def lignes_des_demandes_payees() -> pd.DataFrame:
     return lignes_des_demandes(load_demandes_payees())
+
+
+# ──────────────────────────────────────────────────────────────────────
+# 4bis. Virements collectifs archivés (#32)
+# ──────────────────────────────────────────────────────────────────────
+
+@st.cache_data(ttl=300, show_spinner="Chargement des virements collectifs…")
+def load_virements_collectifs() -> pd.DataFrame:
+    """Fichiers Excel archivés dans la bibliothèque Virements_Collectifs (#32).
+
+    Colonnes : fichier, url (webUrl SharePoint), genere_le, acteur,
+    nb_demandes, montant_total, references (une réf par ligne).
+    Retourne un DataFrame vide si la bibliothèque n'existe pas / est vide.
+    """
+    try:
+        site = _site_id_finances()
+        headers = {"Authorization": f"Bearer {_get_token()}"}
+        url = (
+            f"{GRAPH_BASE}/sites/{site}/lists/Virements_Collectifs/items"
+            f"?$expand=fields,driveItem&$top=500"
+        )
+        items: list[dict] = []
+        while url:
+            r = httpx.get(url, headers=headers, timeout=30.0)
+            r.raise_for_status()
+            data = r.json()
+            items.extend(data.get("value") or [])
+            url = data.get("@odata.nextLink")
+    except Exception:
+        return pd.DataFrame()
+
+    rows = []
+    for it in items:
+        f = it.get("fields") or {}
+        d = it.get("driveItem") or {}
+        if not d.get("file"):
+            continue  # ignore dossiers éventuels
+        rows.append({
+            "fichier":       d.get("name") or "",
+            "url":           d.get("webUrl") or "",
+            "genere_le":     f.get("Created"),
+            "acteur":        f.get("Acteur") or "",
+            "nb_demandes":   int(f.get("Nb_Demandes") or 0),
+            "montant_total": float(f.get("Montant_Total") or 0),
+            "references":    f.get("References_Incluses") or "",
+        })
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        g = pd.to_datetime(df["genere_le"], errors="coerce", utc=True)
+        df["genere_le"] = g.dt.tz_localize(None)
+        df = df.sort_values("genere_le", ascending=False).reset_index(drop=True)
+    return df
 
 
 # ──────────────────────────────────────────────────────────────────────

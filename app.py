@@ -21,6 +21,7 @@ from data import (
     load_demandes_all,
     lignes_des_demandes,
     load_membres_actifs,
+    load_virements_collectifs,
     check_planning_for_member,
     STATUTS_PAYE,
     STATUTS_EN_COURS,
@@ -196,10 +197,11 @@ if demandes.empty:
 # Onglets
 # ══════════════════════════════════════════════════════════════════════
 
-tab_overview, tab_membre, tab_type, tab_planning, tab_exports = st.tabs([
+tab_overview, tab_membre, tab_type, tab_virements, tab_planning, tab_exports = st.tabs([
     "📈 Vue d'ensemble",
     "👥 Par membre",
     "🚑 Par type",
+    "🏦 Virements",
     "🗓️ Vérif planning",
     "📥 Exports",
 ])
@@ -319,7 +321,7 @@ with tab_membre:
         m = df_show["Bénévole"].str.contains(search, case=False, na=False) | \
             df_show["Email"].str.contains(search, case=False, na=False)
         df_show = df_show[m]
-    st.caption("💡 Clique sur une ligne pour afficher l'historique complet du bénévole.")
+    st.caption("💡 Coche la case en début de ligne pour afficher l'historique complet du bénévole.")
     event = st.dataframe(df_show, hide_index=True, width="stretch",
                  column_config={
                      "Total reçu (€)": st.column_config.NumberColumn(format="%.2f €"),
@@ -420,6 +422,69 @@ with tab_type:
                          })
         else:
             st.info("Pas de lignes sur la période.")
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Virements collectifs (#32)
+# ──────────────────────────────────────────────────────────────────────
+
+with tab_virements:
+    st.subheader("Virements collectifs générés")
+    st.caption(
+        "Fichiers Excel archivés automatiquement dans SharePoint "
+        "(bibliothèque Virements_Collectifs, #32) à chaque export par un admin. "
+        "⚠️ Indépendant des filtres statut/période de la barre latérale."
+    )
+
+    virements = load_virements_collectifs()
+    if virements.empty:
+        st.info("Aucun virement collectif archivé pour le moment.")
+    else:
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Fichiers archivés", len(virements))
+        c2.metric("Montant cumulé",
+                  f"{virements['montant_total'].sum():,.2f} €".replace(",", " "))
+        c3.metric("Dernier export",
+                  virements["genere_le"].max().strftime("%d/%m/%Y %H:%M")
+                  if virements["genere_le"].notna().any() else "—")
+
+        vir_show = virements[[
+            "fichier", "genere_le", "acteur", "nb_demandes", "montant_total", "url",
+        ]].rename(columns={
+            "fichier":       "Fichier",
+            "genere_le":     "Généré le",
+            "acteur":        "Par",
+            "nb_demandes":   "Nb demandes",
+            "montant_total": "Total (€)",
+            "url":           "Ouvrir",
+        })
+        st.caption("💡 Coche la case en début de ligne pour voir les références incluses dans le fichier.")
+        event_vir = st.dataframe(
+            vir_show, hide_index=True, width="stretch",
+            column_config={
+                "Généré le": st.column_config.DatetimeColumn(format="DD/MM/YYYY HH:mm"),
+                "Total (€)": st.column_config.NumberColumn(format="%.2f €"),
+                "Ouvrir":    st.column_config.LinkColumn(display_text="📄 SharePoint"),
+            },
+            on_select="rerun", selection_mode="single-row",
+            key="table_virements",
+        )
+
+        sel_vir = event_vir.selection.rows if event_vir and event_vir.selection else []
+        if sel_vir:
+            v = virements.iloc[sel_vir[0]]
+            refs = [r for r in (v["references"] or "").splitlines() if r.strip()]
+            st.markdown(f"### 📄 {v['fichier']}")
+            st.markdown(
+                f"**{v['nb_demandes']} demandes** — **{v['montant_total']:,.2f} €**"
+                .replace(",", " ")
+                + (f" — généré par {v['acteur']}" if v["acteur"] else "")
+            )
+            if refs:
+                refs_df = pd.DataFrame({"Références incluses": refs})
+                st.dataframe(refs_df, hide_index=True, width="stretch")
+            else:
+                st.info("Pas de références enregistrées pour ce fichier (métadonnées absentes).")
 
 
 # ──────────────────────────────────────────────────────────────────────
