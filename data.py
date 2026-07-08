@@ -238,9 +238,12 @@ def load_demandes_payees() -> pd.DataFrame:
 @st.cache_data(ttl=300, show_spinner="Chargement des lignes de défraiement…")
 def load_lignes() -> pd.DataFrame:
     site = _site_id_finances()
+    # ⚠️ Noms internes SP : "TypeService" (SANS underscore) et "Details_Ligne"
+    # — cf. graph_client.py création des lignes. Graph ignore silencieusement
+    # un $select de champ inexistant → un mauvais nom = colonne vide partout.
     select = (
-        "Title,ID_Demande,Type_Service,Periode,Qualification,"
-        "Date_Prestation,Quantite,Montant_Propose,Details"
+        "Title,ID_Demande,TypeService,Periode,Qualification,"
+        "Date_Prestation,Quantite,Montant_Propose,Details_Ligne"
     )
     raw = _fetch_list(site, "Lignes_Defraiement", select)
     rows = []
@@ -253,13 +256,13 @@ def load_lignes() -> pd.DataFrame:
         rows.append({
             "id":             int(item["id"]),
             "id_demande":     id_demande,
-            "type_service":   f.get("Type_Service") or "",
+            "type_service":   f.get("TypeService") or "",
             "periode":        f.get("Periode") or "",
             "qualification":  f.get("Qualification") or "",
             "date_prestation": f.get("Date_Prestation") or None,
             "quantite":       int(f.get("Quantite") or 1),
             "montant":        float(f.get("Montant_Propose") or 0),
-            "details":        f.get("Details") or "",
+            "details":        f.get("Details_Ligne") or "",
         })
     df = pd.DataFrame(rows)
     if not df.empty:
