@@ -22,6 +22,10 @@
 
 ## ✅ Ce qui est en place et fonctionnel
 
+### Reporting v0.2 déployé sur Azure — 6/7
+Nouveautés livrées : onglet **🏦 Virements** (registre des virements collectifs archivés #32, avec références par fichier), **filtre par type** sur l'onglet Par membre, granularité **"Toutes"**, **drill-down** historique par bénévole (cocher la case en début de ligne), fix du merge lignes (onglet Par type), et `SHAREPOINT_HR_SITE_ID`/`SHAREPOINT_MEMBRES_LIST` posés en app settings Azure → la liste des membres se charge dans Vérif planning (le bouton de vérification lui-même reste #39).
+Notes déploiement : `WEBSITES_CONTAINER_START_TIME_LIMIT=600` posé (le cold start B1 dépassait les 230s par défaut → Application Error). En cas de 502/504 Kudu au deploy : `az webapp stop` → deploy → `az webapp start`.
+
 ### Reporting Streamlit hébergé Azure — #22 ✓ complet
 Le reporting **tourne 24/7 sur Azure**, complètement indépendant du Mac Mini de JP.
 
@@ -56,6 +60,14 @@ Staging remis à niveau au 2/7 : 85 demandes, 112 lignes, 323 historiques copié
 `src/api.ts` — Quand `acquireTokenSilent` échoue (refresh token expiré), on détecte si l'account précédent était `@acsrs.be` (via username ou claim `hd`) et on rappelle `loginRedirect` avec `extraQueryParameters: { domain_hint: "acsrs.be" }` + `loginHint: acc.username`. Effet : le user acsrs.be qui revient après 90j est redirigé directement vers M365 acsrs.be au lieu de la page CIAM générique.
 
 **Limitation** : ne s'applique QUE au re-auth après token expiré, PAS au premier login (cache vidé). Pour ça, voir #31.
+
+### Archivage Excel virement collectif — #32 ✓ complet en prod (avant 2/7)
+
+**Origine** : Daniel avait exporté un fichier Excel de virement collectif qui a été perdu — impossible ensuite de retracer les demandes incluses, le montant, l'acteur, la date exacte.
+
+**Fix** : bibliothèque SharePoint `Virements_Collectifs` sur site Finances qui archive **AVANT** le renvoi du fichier au navigateur. Métadonnées automatiques : `Acteur`, `Nb_Demandes`, `Montant_Total`, `References_Incluses`. Invariant : "tout fichier bancaire en circulation existe dans l'archive". Si l'archivage échoue → l'export échoue → la transition batch (demandes → EncodeeBanque) n'a pas lieu.
+
+Code : `graph_client.archiver_excel_virement()` (lignes 3309-3354), appelé depuis `/api/export-virement`. Setup : `scripts/setup_virements_collectifs.py`. Refresh staging inclut aussi la copie des fichiers.
 
 ### Historique Validation avec nom du demandeur — #30 ✓ complet en prod (2/7 après-midi)
 
@@ -247,6 +259,15 @@ https://nonprofit.microsoft.com/en-us/getting-started — ~$3500/an de crédits 
 **#34 — Modal de confirmation avant bulk "Encoder"** — récap N demandes + total € + avertissement "génère le fichier bancaire et transmet à la signature". À discuter : séparation des rôles (Daniel vérifie, JP/trésorier encode) plutôt qu'un simple modal.
 **#35 — Vue Trésorier en sous-onglets** — "À signer" (actionnable) / "En préparation" (lecture seule, sans checkbox). Corrige la confusion 34 affichées / 24 cochables.
 **#36 — Notion de lot de virement** (réflexion, pas décidé) — entité Lot, signature et confirmation par lot, garantit l'invariant fichier bancaire ↔ statuts. Migration naturelle depuis #32.
+**#40 — Sémantique "signature" honnête** — renommer l'étape Trésorier "Signer" en "Confirmer signature banque" : l'acteur réel (JP) constate la signature faite en banque par la Présidente, historique du type "jp.coel a constaté la signature (signataire banque : Présidente)". Supprime le besoin de retoucher Historique_Statuts à la main (pratique actuelle : remplacement manuel de l'email — incomplet d'ailleurs, le champ acteur sur Demandes_Defraiement garde le vrai). À coupler avec #17/Phase 4 (autorisation par rôle depuis le JWT).
+**#41 — Notifications de statut aux bénévoles** — mail automatique au demandeur aux jalons clés : approuvée, refusée (avec motif), payée. Infra Power Automate déjà en place (digest #65). Désamorce les "c'est payé quand ?" avec 50 inscrits.
+**#42 — Rapprochement bancaire CODA** — importer les extraits CODA et rapprocher communication ↔ Numero_Ref pour passer automatiquement les demandes en Payee avec la date réelle d'exécution. Supprime la confirmation manuelle de fin de mois et alimente #40. La colonne "Encodé" de l'export (pointage manuel) est l'intérim.
+**#43 — Reporting : délais de traitement** — depuis Historique_Statuts : temps moyen par étape (soumission→approbation→vérification→encodage→signature→paiement), tendance dans le temps. Indicateur de santé du processus.
+**#44 — Reporting : contrôle de cohérence virements ↔ statuts** — panneau comparant les références des fichiers archivés (Virements_Collectifs #32) aux statuts réels des demandes : détecte immédiatement un lot partiel (incident Daniel 2/7) ou une demande payée hors fichier. Extension de l'onglet 🏦 Virements.
+**#45 — Reporting : vue budget annuel** — total défrayé vs enveloppe ASBL, projection fin d'année sur la tendance. Pour le CA. Rejoint #38 (volumétrie).
+**#46 — UX mobile de la soumission** — vérifier/adapter le rendu téléphone du formulaire de demande (encodage en fin de garde).
+**#39 — Vérif planning fonctionnelle sur Azure** — l'onglet Vérif planning du reporting importe `graph_client` depuis le dossier local `defraiement-functions` (Mac mini uniquement) → IMPORT_ERROR sur Azure. Fix : appeler l'endpoint API du backend prod (auth via `ADMIN_PLANNING_KEY` déjà présent dans les settings) au lieu de l'import local. Pré-requis fait le 3/7 : `SHAREPOINT_HR_SITE_ID` passé en app setting Azure pour charger la liste des membres (commit `78cfbc7`).
+**#38 — Analyse volumétrie données** (~mi-juillet 2026, quinzaine après le 3/7) — analyser les fichiers/listes de données (Demandes, Lignes, Historique_Statuts, Virements_Collectifs...) pour extrapoler la croissance en records par mois puis par an, et décider du traitement de l'historique + stratégie d'archivage éventuelle.
 **#37 — 401 "Token expiré" en cours de session** (vu par JP 3/7 en signant 14 demandes) — `api.ts` utilise l'idToken comme Bearer, mais `acquireTokenSilent` le sert depuis le cache en jugeant la fraîcheur sur l'access token → idToken expiré envoyé sans erreur après ~1h de session. Fix : dans `apiFetch`, sur 401 → retry une fois avec `acquireTokenSilent({ forceRefresh: true })`, sinon `loginRedirect` (conserver le domain_hint #14). Impact : aucune transition perdue (le backend rejette la requête entière avant traitement), juste une UX cassée.
 
 ## 📝 Note incident virement collectif 2-3/7
