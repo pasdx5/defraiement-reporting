@@ -39,6 +39,7 @@ TYPE_LABELS = {
     "Prestation": "🚑 Prestation",
     "Cours":      "🎓 Cours",
     "Preventif":  "🎪 Préventif",
+    "Administratif": "🗂️ Travail administratif",
 }
 
 st.set_page_config(
@@ -435,7 +436,7 @@ with tab_type:
             "dépasser le nombre réel de demandes."
         )
 
-    st.markdown("### Détail par service (AMU / ATNUP / Cours / Préventif…)")
+    st.markdown("### Détail par service (AMU / ATNUP / Cours / Préventif / Administratif…)")
     if not lignes.empty:
         if not lignes_period.empty:
             par_service = lignes_period.groupby(["type_service", "periode"]).agg(
