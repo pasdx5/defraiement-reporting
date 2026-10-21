@@ -32,9 +32,8 @@ Le reporting **tourne 24/7 sur Azure**, complètement indépendant du Mac Mini d
 - **URL live** : https://app-defraiement-reporting.azurewebsites.net
 - **Users autorisés** (auth Azure AD requise) :
   - Jean-Philippe Coël (jp.coel@acsrs.be)
-  - Daniel Gossey (d.gossey@acsrs.be)
-  - Fabienne Felix (f.felix@acsrs.be)
   - Stéphane Tries (s.tries@acsrs.be)
+  - *(Daniel Gossey et Fabienne Felix retirés le 21/10/2026)*
 - **Coût Azure** : ~13€/mois (App Service Plan B1 Linux)
 
 ### Nouveaux tarifs Nuit — #26 ✓ complet en prod
@@ -80,7 +79,7 @@ Rendu frontend : `Validation.tsx` ligne 862-867, affiche `D-XXXX · Prénom Nom`
 ## 🏗️ Architecture reporting
 
 ```
-User (Daniel, Fabienne, Stéphane, JP)
+User (JP, Stéphane)
     │
     ▼  https://app-defraiement-reporting.azurewebsites.net
     │
