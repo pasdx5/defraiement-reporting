@@ -184,7 +184,7 @@ if demandes_all.empty:
 # Filtre période sur date_ref (paiement si dispo, sinon soumission)
 mask = (
     (demandes_all["date_ref"] >= pd.Timestamp(d_start)) &
-    (demandes_all["date_ref"] <= pd.Timestamp(d_end) + pd.Timedelta(days=1))
+    (demandes_all["date_ref"] <  pd.Timestamp(d_end) + pd.Timedelta(days=1))
 )
 demandes = demandes_all.loc[mask].copy()
 
@@ -336,35 +336,69 @@ with tab_membre:
         sel_email = sel["Email"]
         sel_label = sel["Bénévole"]
 
-        # Historique COMPLET : tous statuts, toutes périodes (indépendant
-        # des filtres statut/période/type de la sidebar)
+        histo_cols = ["numero_ref", "type", "statut",
+                      "date_soumission", "date_paiement", "montant_total"]
+
+        def _histo_display(df: pd.DataFrame) -> pd.DataFrame:
+            out = df[histo_cols].copy()
+            out["type"] = out["type"].map(lambda t: TYPE_LABELS.get(t, t))
+            out.columns = ["N° Réf", "Type", "Statut",
+                           "Soumise le", "Payée le", "Montant (€)"]
+            return out
+
+        montant_cfg = {"Montant (€)": st.column_config.NumberColumn(format="%.2f €")}
+        periode_txt = ("toutes périodes" if granularite == "Toutes"
+                       else f"{d_start.strftime('%d/%m/%Y')} → {d_end.strftime('%d/%m/%Y')}")
+
+        # ── Détail sur la période sélectionnée ─────────────────────────
+        # Mêmes filtres que le tableau ci-dessus (statut, période, type) :
+        # c'est ce que l'administration demande pour un mois / une semaine.
+        detail = demandes_m[
+            demandes_m["demandeur_email"] == sel_email
+        ].sort_values("date_ref")
+
+        st.markdown("---")
+        st.markdown(f"### 📅 Détail sur la période — {sel_label}")
+        st.caption(f"Demandes {statut_label} du {periode_txt} "
+                   f"(filtres statut, période et type appliqués).")
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Période", periode_txt)
+        c2.metric("Nb demandes", len(detail))
+        c3.metric("Total versé sur la période",
+                  f"{detail['montant_total'].sum():,.2f} €".replace(",", " "))
+
+        detail_display = _histo_display(detail)
+        st.dataframe(detail_display, hide_index=True, width="stretch",
+                     column_config=montant_cfg)
+
+        buf_detail = io.BytesIO()
+        with pd.ExcelWriter(buf_detail, engine="openpyxl") as writer:
+            detail_display.to_excel(writer, sheet_name="Détail période", index=False)
+        st.download_button(
+            label="📥 Télécharger ce détail (Excel)",
+            data=buf_detail.getvalue(),
+            file_name=f"detail_{sel_email}_{d_start}_{d_end}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="dl_detail_membre",
+        )
+
+        # ── Historique COMPLET : tous statuts, toutes périodes ─────────
+        # (indépendant des filtres statut/période/type de la sidebar)
         histo = demandes_all_raw[
             demandes_all_raw["demandeur_email"] == sel_email
         ].sort_values("date_ref", ascending=False)
 
-        st.markdown("---")
-        st.markdown(f"### 🗂️ Historique complet — {sel_label}")
-        st.caption("Toutes les demandes du bénévole, tous statuts et toutes périodes confondus.")
-
-        h_paye = histo[histo["statut"].isin(STATUTS_PAYE)]
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Demandes (total)", len(histo))
-        c2.metric("Payées", len(h_paye))
-        c3.metric("Total payé", f"{h_paye['montant_total'].sum():,.2f} €".replace(",", " "))
-        c4.metric("Première demande",
-                  histo["date_ref"].min().strftime("%d/%m/%Y") if len(histo) else "—")
-
-        histo_display = histo[[
-            "numero_ref", "type", "statut",
-            "date_soumission", "date_paiement", "montant_total",
-        ]].copy()
-        histo_display["type"] = histo_display["type"].map(lambda t: TYPE_LABELS.get(t, t))
-        histo_display.columns = ["N° Réf", "Type", "Statut",
-                                 "Soumise le", "Payée le", "Montant (€)"]
-        st.dataframe(histo_display, hide_index=True, width="stretch",
-                     column_config={
-                         "Montant (€)": st.column_config.NumberColumn(format="%.2f €"),
-                     })
+        with st.expander(f"🗂️ Historique complet — {sel_label} (tous statuts, toutes périodes)"):
+            h_paye = histo[histo["statut"].isin(STATUTS_PAYE)]
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Demandes (total)", len(histo))
+            c2.metric("Payées", len(h_paye))
+            c3.metric("Total payé", f"{h_paye['montant_total'].sum():,.2f} €".replace(",", " "))
+            c4.metric("Première demande",
+                      histo["date_ref"].min().strftime("%d/%m/%Y") if len(histo) else "—")
+            st.dataframe(_histo_display(histo), hide_index=True, width="stretch",
+                         column_config=montant_cfg)
 
 
 # ──────────────────────────────────────────────────────────────────────
