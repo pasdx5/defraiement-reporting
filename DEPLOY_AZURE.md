@@ -114,8 +114,34 @@ zip -r deploy.zip . -x "*.venv/*" "*__pycache__/*" "*.git/*" "*.DS_Store"
 az webapp deploy -g $RG -n $APP --src-path deploy.zip --type zip
 ```
 
-Option B — GitHub Actions (recommandé pour prod) : voir `.github/workflows/deploy.yml`
-(à créer sur base du template `azure-static-web-apps` de app-defraiement).
+Option B — GitHub Actions (prod) : `.github/workflows/deploy.yml` déploie
+automatiquement à chaque push sur `main` (donc à chaque fusion de PR). On peut
+aussi le lancer à la main : onglet **Actions > Deploy Azure App Service > Run workflow**.
+
+Mise en place (une seule fois) :
+
+1. Autoriser l'auth basique SCM, nécessaire au publish profile :
+
+```bash
+az resource update -g $RG -n scm --namespace Microsoft.Web \
+  --resource-type basicPublishingCredentialsPolicies \
+  --parent sites/$APP --set properties.allow=true
+```
+
+2. Récupérer le publish profile :
+
+```bash
+az webapp deployment list-publishing-profiles -g $RG -n $APP --xml > publish-profile.xml
+```
+
+3. Dans GitHub : **Settings > Secrets and variables > Actions > New repository secret**
+   - Nom : `AZURE_WEBAPP_PUBLISH_PROFILE`
+   - Valeur : tout le contenu de `publish-profile.xml`
+
+4. Supprimer `publish-profile.xml` en local (il contient un mot de passe).
+
+Si le mot de passe de déploiement est régénéré (`az webapp deployment
+list-publishing-profiles` après un reset), mettre à jour le secret.
 
 ## Debug
 

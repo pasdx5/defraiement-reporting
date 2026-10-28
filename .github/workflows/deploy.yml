@@ -1,0 +1,39 @@
+name: Deploy Azure App Service
+
+# Déploie le reporting Streamlit sur app-defraiement-reporting à chaque
+# push sur main (donc à chaque fusion de PR). Lançable aussi à la main
+# depuis l'onglet Actions (« Run workflow »).
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Un seul déploiement à la fois ; un nouveau push annule celui en cours.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Garde-fou : bloque le déploiement si un fichier Python ne compile pas.
+      - name: Vérification syntaxe
+        run: python -m py_compile app.py data.py
+
+      # Le build (pip install -r requirements.txt) est fait côté Azure
+      # grâce à SCM_DO_BUILD_DURING_DEPLOYMENT=true (cf. DEPLOY_AZURE.md).
+      - name: Deploy
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: app-defraiement-reporting
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: .
