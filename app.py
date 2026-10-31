@@ -39,6 +39,7 @@ TYPE_LABELS = {
     "Prestation": "🚑 Prestation",
     "Cours":      "🎓 Cours",
     "Preventif":  "🎪 Préventif",
+    "Administratif": "🗂️ Travail administratif",
 }
 
 st.set_page_config(
